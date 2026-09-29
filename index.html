@@ -1367,15 +1367,38 @@
     async function geocodeLocation(name) {
       const q = name.includes('ไทย') ? name : `${name}, Thailand`;
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=th&accept-language=th`);
         if (res.ok) {
           const data = await res.json();
           if (data && data.length > 0) {
-            return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+            const searchText = name.replace(/,?\s*ไทย\s*$/i, '').trim().toLowerCase();
+            const best = data
+              .map(item => {
+                const displayName = String(item.display_name || '').toLowerCase();
+                const exactName = String(item.name || '').toLowerCase() === searchText;
+                const containsName = displayName.includes(searchText);
+                return { item, score: (exactName ? 100 : 0) + (containsName ? 20 : 0) + Number(item.importance || 0) };
+              })
+              .sort((a, b) => b.score - a.score)[0].item;
+            return {
+              lat: parseFloat(best.lat),
+              lng: parseFloat(best.lon),
+              displayName: best.display_name || name
+            };
           }
         }
       } catch(e) {}
       return null;
+    }
+
+    async function geocodeRoadWaypoint(road) {
+      const cleanedRoad = road.trim();
+      if (!cleanedRoad) return null;
+      const roadQuery = /^\d+$/.test(cleanedRoad)
+        ? `ทางหลวงหมายเลข ${cleanedRoad}, Thailand`
+        : `${cleanedRoad}, Thailand`;
+      const coords = await geocodeLocation(roadQuery);
+      return coords ? { ...coords, road: cleanedRoad } : null;
     }
 
     function calcDistance(lat1, lon1, lat2, lon2) {
@@ -1441,21 +1464,32 @@
 
       const origin = originInput.value.trim();
       const dest = destInput.value.trim();
+      const requestedRoads = roadsInput.value
+        .split(/[,|]+/)
+        .map(road => road.trim())
+        .filter(Boolean);
 
       const origCoords = await geocodeLocation(origin);
       const destCoords = await geocodeLocation(dest);
+      const roadWaypoints = [];
+      for (const road of requestedRoads) {
+        const waypoint = await geocodeRoadWaypoint(road);
+        if (waypoint) roadWaypoints.push(waypoint);
+      }
 
       let osrmSteps = [];
       let routeGeometry = [];
 
       if (origCoords && destCoords) {
         try {
-          const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${origCoords.lng},${origCoords.lat};${destCoords.lng},${destCoords.lat}?steps=true&geometries=geojson&overview=full`);
+          const routePoints = [origCoords, ...roadWaypoints, destCoords];
+          const coordinates = routePoints.map(point => `${point.lng},${point.lat}`).join(';');
+          const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?steps=true&geometries=geojson&overview=full`);
           if (osrmRes.ok) {
             const data = await osrmRes.json();
             if (data.routes && data.routes.length > 0) {
               const legs = data.routes[0].legs || [];
-              osrmSteps = legs[0]?.steps || [];
+              osrmSteps = legs.flatMap(leg => leg.steps || []);
               routeGeometry = data.routes[0].geometry?.coordinates || [];
             }
           }
@@ -1540,7 +1574,7 @@
       segments.forEach((seg) => {
         const routeMatched = (points, source) => points.map(p => {
           const position = findNearestRoutePosition(p, routeGeometry);
-          if (!position || position.distanceKm > 2.5) return null;
+          if (!position || position.distanceKm > 0.75) return null;
           const segmentStart = seg.routeStartKm || 0;
           const segmentEnd = seg.routeEndKm || Infinity;
           if (position.alongKm < segmentStart - 1 || position.alongKm > segmentEnd + 1) return null;
@@ -1654,7 +1688,7 @@
       const unlinkedDoh = floodData.dohPoints.filter(p => {
         if (boundPtIds.has(p.id)) return false;
         const position = findNearestRoutePosition(p, routeGeometry);
-        return position && position.distanceKm <= 2.5;
+        return position && position.distanceKm <= 0.75;
       });
 
       if (unlinkedDoh.length > 0) {
