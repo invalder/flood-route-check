@@ -1479,28 +1479,57 @@
 
       let osrmSteps = [];
       let routeGeometry = [];
+      let routeError = '';
 
       if (origCoords && destCoords) {
         try {
-          const routePoints = [origCoords, ...roadWaypoints, destCoords];
-          const coordinates = routePoints.map(point => `${point.lng},${point.lat}`).join(';');
-          const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?steps=true&geometries=geojson&overview=full`);
-          if (osrmRes.ok) {
-            const data = await osrmRes.json();
-            if (data.routes && data.routes.length > 0) {
-              const legs = data.routes[0].legs || [];
-              osrmSteps = legs.flatMap(leg => leg.steps || []);
-              routeGeometry = data.routes[0].geometry?.coordinates || [];
+          const requestRoute = async (routePoints) => {
+            const coordinates = routePoints.map(point => `${point.lng},${point.lat}`).join(';');
+            const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?steps=true&geometries=geojson&overview=full`);
+            const data = await response.json();
+            if (!response.ok || data.code !== 'Ok' || !data.routes?.[0]) {
+              throw new Error(data.message || `OSRM HTTP ${response.status}`);
+            }
+            return data.routes[0];
+          };
+
+          let route;
+          if (roadWaypoints.length > 0) {
+            try {
+              route = await requestRoute([origCoords, ...roadWaypoints, destCoords]);
+            } catch (waypointError) {
+              routeError = `เส้นทางตามถนนที่ระบุใช้ไม่ได้ (${waypointError.message}) จึงลองเส้นทางอัตโนมัติ`;
             }
           }
-        } catch(e) {}
+          if (!route) route = await requestRoute([origCoords, destCoords]);
+
+          const legs = route.legs || [];
+          osrmSteps = legs.flatMap(leg => leg.steps || []);
+          routeGeometry = route.geometry?.coordinates || [];
+        } catch (e) {
+          routeError = e.message || 'ไม่สามารถคำนวณเส้นทางได้';
+        }
+      } else {
+        routeError = 'ไม่พบพิกัดต้นทางหรือปลายทางจากข้อความที่กรอก';
+      }
+
+      if (routeError && routeGeometry.length === 0) {
+        timerText.innerText = routeError;
+      }
+
+      if (routeGeometry.length === 0) {
+        if (timerInterval) clearInterval(timerInterval);
+        aiTimerBox.style.display = 'none';
+        drawRouteOnMap([]);
+        runRouteEvaluationWithOsrm([], [], origin, dest, routeError);
+        return;
       }
 
       if (timerInterval) clearInterval(timerInterval);
       aiTimerBox.style.display = 'none';
 
       drawRouteOnMap(routeGeometry);
-      runRouteEvaluationWithOsrm(osrmSteps, routeGeometry, origin, dest);
+      runRouteEvaluationWithOsrm(osrmSteps, routeGeometry, origin, dest, routeError);
     });
 
     stopTimerBtn.addEventListener('click', () => {
@@ -1508,11 +1537,21 @@
       aiTimerBox.style.display = 'none';
     });
 
-    function runRouteEvaluationWithOsrm(osrmSteps, routeGeometry, origin, dest) {
+    function runRouteEvaluationWithOsrm(osrmSteps, routeGeometry, origin, dest, routeError = '') {
       const rawRoads = roadsInput.value.trim();
       const userSpecifiedRoads = rawRoads.split(/[,|\s]+/).map(r => r.replace(/^ถ\.|ถนน|ทางหลวง/g, '').trim()).filter(Boolean);
 
       let segments = [];
+
+      if (!routeGeometry || routeGeometry.length < 2) {
+        routeSummaryBox.style.background = 'rgba(239, 68, 68, 0.15)';
+        routeSummaryBox.style.borderColor = 'var(--accent-danger)';
+        routeSummaryBox.innerHTML = `🚫 <strong>ยังวิเคราะห์เส้นทางไม่ได้</strong><br>${routeError || 'ไม่พบเส้นทางจากระบบแผนที่ กรุณาตรวจสอบชื่อจุดเริ่มต้นและปลายทาง'}`;
+        segmentTimeline.innerHTML = '';
+        routeResultCard.classList.remove('hidden');
+        routeResultCard.scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
 
       if (osrmSteps.length > 0) {
         let currentSegRoads = [];
