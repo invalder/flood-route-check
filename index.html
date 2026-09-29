@@ -1,0 +1,1633 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบเช็กน้ำท่วมตามเส้นทาง (77 จังหวัดทั่วไทย + กทม.) | Flood Route Check</title>
+  
+  <!-- Google Fonts: Prompt & Kanit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet CSS & JS for Interactive Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: rgba(30, 41, 59, 0.7);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-green: #22c55e;
+      --accent-warning: #f59e0b;
+      --accent-danger: #ef4444;
+      --accent-purple: #a855f7;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 20px;
+      --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Prompt', 'Kanit', sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      padding-bottom: 60px;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 75%, rgba(168, 85, 247, 0.08) 0%, transparent 40%);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1050px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 20px;
+      padding: 16px 0;
+    }
+
+    header h1 {
+      font-family: 'Kanit', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 600;
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    header p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      margin-top: 6px;
+    }
+
+    /* Data Freshness Bar */
+    .freshness-bar {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .freshness-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .freshness-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.88rem;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    .status-dot.warning {
+      background-color: var(--accent-warning);
+      box-shadow: 0 0 10px var(--accent-warning);
+    }
+
+    .btn-refresh {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-blue);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    .btn-refresh:hover {
+      background: rgba(56, 189, 248, 0.25);
+      transform: scale(1.02);
+    }
+
+    /* Drive Sync Settings Box */
+    .sync-box {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+    }
+
+    .sync-box input {
+      flex: 1;
+      min-width: 240px;
+      padding: 6px 10px;
+      font-size: 0.8rem;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--accent-blue);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Map Box Styling */
+    #mapView {
+      width: 100%;
+      height: 480px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-color);
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+      z-index: 1;
+    }
+
+    .map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      background: rgba(15, 23, 42, 0.6);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    /* Leaflet Popup Styling Override */
+    .leaflet-popup-content-wrapper {
+      background: #1e293b !important;
+      color: #f8fafc !important;
+      border: 1px solid rgba(56, 189, 248, 0.4) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.6) !important;
+      font-family: 'Prompt', sans-serif !important;
+    }
+    .leaflet-popup-tip {
+      background: #1e293b !important;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group.full-width {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    input, select {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent-blue);
+    }
+
+    /* Vehicle Selector Cards */
+    .vehicle-selector {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    @media (max-width: 500px) {
+      .vehicle-selector {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .vehicle-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .vehicle-card:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+
+    .vehicle-card.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+    }
+
+    .vehicle-icon {
+      font-size: 1.6rem;
+      margin-bottom: 4px;
+    }
+
+    .vehicle-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .vehicle-desc {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .btn {
+      padding: 12px 20px;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 0.95rem;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      flex: 1;
+      min-width: 160px;
+    }
+
+    .btn-ai {
+      background: linear-gradient(135deg, #38bdf8, #6366f1);
+      color: white;
+      box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3);
+    }
+
+    .btn-ai:hover {
+      opacity: 0.92;
+      transform: translateY(-2px);
+    }
+
+    .btn-gmaps {
+      background: #4285F4;
+      color: white;
+    }
+
+    .btn-gmaps:hover {
+      background: #3367d6;
+    }
+
+    .btn-waze {
+      background: #33ccff;
+      color: #000;
+    }
+
+    .btn-waze:hover {
+      background: #28b8e6;
+    }
+
+    /* Loading Overlay */
+    .ai-timer-box {
+      display: none;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--accent-blue);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-top: 16px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(56, 189, 248, 0.2);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 1s infinite linear;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .btn-stop {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--accent-danger);
+      border: 1px solid var(--accent-danger);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    /* Segments Timeline */
+    .segment-timeline {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .segment-card {
+      background: rgba(15, 23, 42, 0.6);
+      border-left: 4px solid var(--accent-green);
+      border-top: 1px solid var(--border-color);
+      border-right: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      padding: 16px;
+    }
+
+    .segment-card.caution {
+      border-left-color: var(--accent-warning);
+    }
+
+    .segment-card.danger {
+      border-left-color: var(--accent-danger);
+    }
+
+    .segment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .segment-hwy {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-blue);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .segment-title {
+      font-weight: 600;
+      font-size: 1.05rem;
+    }
+
+    .segment-badge {
+      font-size: 0.78rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+
+    .badge-safe {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .badge-caution {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-warning);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .badge-danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--accent-danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .flood-point-box {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 0.85rem;
+    }
+
+    /* Fallback Unlinked Section */
+    .unlinked-section {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px dashed var(--accent-warning);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-top: 20px;
+    }
+
+    .unlinked-title {
+      font-weight: 600;
+      color: var(--accent-warning);
+      font-size: 0.95rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Catalog Section */
+    .catalog-controls {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .catalog-controls {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .points-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px;
+    }
+
+    .point-card {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s;
+    }
+
+    .point-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+
+    .point-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .point-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .point-source {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .source-bma {
+      background: rgba(56, 189, 248, 0.2);
+      color: var(--accent-blue);
+    }
+
+    .source-doh {
+      background: rgba(168, 85, 247, 0.2);
+      color: var(--accent-purple);
+    }
+
+    .depth-bar-container {
+      margin: 10px 0;
+    }
+
+    .depth-bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .depth-bar-bg {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .depth-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #ef4444);
+      border-radius: 4px;
+    }
+
+    .point-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .map-link {
+      color: var(--accent-blue);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Hotlines */
+    .hotlines-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 10px;
+    }
+
+    .hotline-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      text-align: center;
+    }
+
+    .hotline-number {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--accent-blue);
+    }
+
+    .hotline-name {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .disclaimer {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      background: rgba(245, 158, 11, 0.08);
+      border-left: 3px solid var(--accent-warning);
+      padding: 10px 14px;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      margin-top: 16px;
+    }
+
+    .external-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .ext-link-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem;
+      text-decoration: none;
+    }
+
+    .ext-link-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <h1>🌊 ระบบเช็กน้ำท่วมตามเส้นทาง (77 จังหวัดทั่วไทย + กทม.)</h1>
+      <p>ค้นหาและวิเคราะห์ความปลอดภัยในการเดินทาง พร้อม Visualized Map แผนที่โต้ตอบสด</p>
+    </header>
+
+    <!-- Data Freshness Bar -->
+    <div class="freshness-bar">
+      <div class="freshness-info">
+        <div class="freshness-item">
+          <div class="status-dot" id="bmaDot"></div>
+          <span>กทม. (BMA Sensors): <strong id="bmaCount">0</strong> จุด</span>
+          <span style="color:var(--text-secondary); font-size:0.78rem;" id="bmaTime">(- ชม.)</span>
+        </div>
+        <div class="freshness-item">
+          <div class="status-dot" id="dohDot"></div>
+          <span>กรมทางหลวง (DOH 77 จังหวัด): <strong id="dohCount">0</strong> จุด</span>
+          <span style="color:var(--text-secondary); font-size:0.78rem;" id="dohTime">(- ชม.)</span>
+        </div>
+      </div>
+      <button class="btn-refresh" id="refreshBtn">
+        🔄 ดึงข้อมูลสดจากเบราว์เซอร์
+      </button>
+    </div>
+
+    <!-- Apps Script Drive Sync Bar -->
+    <div class="sync-box">
+      <span>☁️ <strong>Google Drive Sync:</strong></span>
+      <input type="text" id="webAppUrlInput" value="https://script.google.com/macros/s/AKfycby2GcOcyNtksAPYcfo4Cclvbx9tRpB8h-UBsQ0uxfrwL9uQNWhjfheHG7KCgYH8onmveQ/exec" placeholder="วาง URL ของ Google Apps Script Web App เพื่อซิงก์ลง Google Drive อัตโนมัติ...">
+      <button class="btn-refresh" id="syncDriveBtn" style="background:rgba(168,85,247,0.2); color:var(--accent-purple); border-color:rgba(168,85,247,0.4);">
+        💾 บันทึกลง Google Drive
+      </button>
+    </div>
+
+    <!-- Interactive Visualized Map Card -->
+    <div class="card">
+      <div class="card-title">🗺️ Visualized Map - แผนที่จุดน้ำท่วมสด & เส้นทางขับขี่</div>
+      <div id="mapView"></div>
+
+      <div class="map-legend">
+        <div class="legend-item">
+          <div class="legend-color" style="background:#ef4444;"></div>
+          <span>ผ่านไม่ได้ / น้ำท่วมสูง (≥ 30 ซม.)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background:#f59e0b;"></div>
+          <span>เฝ้าระวัง (15 - 29 ซม.)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background:#38bdf8;"></div>
+          <span>น้ำขังเล็กน้อย (&lt; 15 ซม.)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background:#6366f1; width:20px; height:4px; border-radius:2px;"></div>
+          <span>เส้นทางขับขี่ (OSRM Route)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Search & Route Form -->
+    <div class="card">
+      <div class="card-title">🚗 กำหนดเส้นทางเดินทางและประเภทพาหนะ (ระบุได้ทุกจังหวัด/อำเภอทั่วไทย)</div>
+      
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="originInput">📍 จุดเริ่มต้น (จังหวัด / อำเภอ / สถานที่ใดก็ได้ในไทย)</label>
+          <input type="text" id="originInput" placeholder="เช่น กรุงเทพฯ, เชียงใหม่, ขอนแก่น, หาดใหญ่, อรัญประเทศ, ชลบุรี..." value="กรุงเทพฯ">
+        </div>
+        <div class="form-group">
+          <label for="destInput">🏁 จุดหมายปลายทาง (จังหวัด / อำเภอ / สถานที่ใดก็ได้ในไทย)</label>
+          <input type="text" id="destInput" placeholder="เช่น เชียงใหม่, สุราษฎร์ธานี, อุดรธานี, นครราชสีมา, ภูเก็ต..." value="สระแก้ว">
+        </div>
+        
+        <div class="form-group full-width">
+          <label for="roadsInput">🛣️ ถนนหรือทางหลวงที่จะผ่าน (ระบุเพิ่มเติม เช่น 1, 32, 304, 33, พหลโยธิน - หรือเว้นว่างให้ Map Engine คำนวณเส้นทางอัตโนมัติ)</label>
+          <input type="text" id="roadsInput" placeholder="เช่น 33, 304, 32, 1, พหลโยธิน, มิตรภาพ, สุขุมวิท" value="">
+        </div>
+
+        <div class="form-group full-width">
+          <label>🚘 เลือกประเภทพาหนะของคุณ</label>
+          <div class="vehicle-selector">
+            <div class="vehicle-card active" data-type="sedan">
+              <div class="vehicle-icon">🚗</div>
+              <div class="vehicle-name">รถเก๋ง / รถโหลด</div>
+              <div class="vehicle-desc">ผ่านสบาย ≤ 10 ซม.<br>ช้ามาก ≤ 20 ซม.</div>
+            </div>
+            <div class="vehicle-card" data-type="suv">
+              <div class="vehicle-icon">🛻</div>
+              <div class="vehicle-name">SUV / กระบะ</div>
+              <div class="vehicle-desc">ผ่านสบาย ≤ 20 ซม.<br>ช้ามาก ≤ 35 ซม.</div>
+            </div>
+            <div class="vehicle-card" data-type="bike">
+              <div class="vehicle-icon">🛵</div>
+              <div class="vehicle-name">มอเตอร์ไซค์</div>
+              <div class="vehicle-desc">ผ่านสบาย ≤ 5 ซม.<br>ช้ามาก ≤ 15 ซม.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons">
+        <button class="btn btn-ai" id="aiRouteBtn">
+          🧭 ให้ Map Engine คำนวณเส้นทางจริง & เช็กน้ำท่วม
+        </button>
+        <a href="#" target="_blank" class="btn btn-gmaps" id="gmapsBtn">
+          🗺️ เปิดใน Google Maps
+        </a>
+        <a href="#" target="_blank" class="btn btn-waze" id="wazeBtn">
+          🧭 เปิดใน Waze
+        </a>
+      </div>
+
+      <!-- Timer & Progress Overlay -->
+      <div class="ai-timer-box" id="aiTimerBox">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="spinner"></div>
+          <div>
+            <strong>กำลังเรียก OSRM Routing Engine & Geocoding...</strong>
+            <div style="font-size:0.78rem; color:var(--text-secondary);" id="timerText">กำลังคำนวณพิกัดและเส้นทางจริงทั่วประเทศไทย (0.0 วินาที)</div>
+          </div>
+        </div>
+        <button class="btn-stop" id="stopTimerBtn">หยุดวิเคราะห์</button>
+      </div>
+    </div>
+
+    <!-- AI Route Analysis Result Section -->
+    <div class="card hidden" id="routeResultCard">
+      <div class="card-title">📋 ผลการวิเคราะห์เส้นทางขับขี่จริง & สภาพน้ำท่วมเรียงตามลำดับความจริง</div>
+      
+      <div id="routeSummaryBox" style="margin-bottom:16px; padding:12px; background:rgba(56,189,248,0.1); border-radius:var(--radius-md); border:1px solid rgba(56,189,248,0.2);"></div>
+
+      <!-- Timeline Segments -->
+      <div class="segment-timeline" id="segmentTimeline"></div>
+
+      <!-- Fallback Unlinked Highway Points -->
+      <div class="unlinked-section hidden" id="unlinkedSection">
+        <div class="unlinked-title">⚠️ จุดน้ำท่วมอื่นๆ บนทางหลวงสายเดียวกันในจังหวัด (กันตกหล่น)</div>
+        <div id="unlinkedList" style="font-size:0.88rem; color:var(--text-secondary);"></div>
+      </div>
+    </div>
+
+    <!-- All Flood Points Catalog -->
+    <div class="card">
+      <div class="card-title">🔍 รายการจุดน้ำท่วมทั้งหมด (ทุกจังหวัดทั่วประเทศไทย)</div>
+      
+      <div class="catalog-controls">
+        <input type="text" id="searchInput" placeholder="🔎 ค้นหาชื่อถนน, เขต, จังหวัด, จุดสังเกต...">
+        <select id="sourceFilter">
+          <option value="all">ทุกแหล่งข้อมูล</option>
+          <option value="bma">เฉพาะ กทม. (BMA)</option>
+          <option value="doh">เฉพาะ กรมทางหลวง (DOH)</option>
+          <option value="impassable">ผ่านไม่ได้ / ≥30 ซม.</option>
+        </select>
+        <select id="provinceFilter">
+          <option value="all">ทุกจังหวัด / เขตทั่วไทย</option>
+        </select>
+      </div>
+
+      <div class="points-list" id="pointsList"></div>
+    </div>
+
+    <!-- External Links & Hotlines -->
+    <div class="card">
+      <div class="card-title">📞 สายด่วนฉุกเฉิน & ลิงก์ข้อมูลจราจรสด</div>
+      
+      <div class="hotlines-grid">
+        <div class="hotline-card">
+          <div class="hotline-number">1586</div>
+          <div class="hotline-name">สายด่วนกรมทางหลวง</div>
+        </div>
+        <div class="hotline-card">
+          <div class="hotline-number">1146</div>
+          <div class="hotline-name">กรมทางหลวงชนบท</div>
+        </div>
+        <div class="hotline-card">
+          <div class="hotline-number">1555</div>
+          <div class="hotline-name">ศูนย์ร้องเรียน กทม.</div>
+        </div>
+        <div class="hotline-card">
+          <div class="hotline-number">1137</div>
+          <div class="hotline-name">จส.100 ข่าวจราจร</div>
+        </div>
+        <div class="hotline-card">
+          <div class="hotline-number">1669</div>
+          <div class="hotline-name">การแพทย์ฉุกเฉิน</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <div style="font-size:0.88rem; color:var(--text-secondary); margin-bottom:8px;">🔗 ลิงก์ติดตามสถานการณ์สดภายนอก:</div>
+        <div class="external-links">
+          <a href="https://floodbangkok.bangkok.go.th" target="_blank" class="ext-link-btn">🌊 ศูนย์ระบบป้องกันน้ำท่วม กทม.</a>
+          <a href="https://hdms.doh.go.th" target="_blank" class="ext-link-btn">🛣️ ระบบสารสนเทศภัยพิบัติ กรมทางหลวง</a>
+          <a href="https://www.google.com/maps/@13.75,100.5,11z/data=!5m1!1e1" target="_blank" class="ext-link-btn">🚦 Google Maps Traffic</a>
+          <a href="https://traffic.longdo.com" target="_blank" class="ext-link-btn">📍 Longdo Traffic</a>
+          <a href="https://www.thaiwater.net" target="_blank" class="ext-link-btn">💧 ThaiWater สถาบันสารสนเทศทรัพยากรน้ำ</a>
+          <a href="https://gistda.or.th" target="_blank" class="ext-link-btn">🛰️ GISTDA ดาวเทียมน้ำท่วม</a>
+        </div>
+      </div>
+
+      <div class="disclaimer">
+        📌 <strong>หมายเหตุสำคัญ:</strong> ถนนทางหลวงชนบท (ทช.), ถนน อบจ., และถนนเทศบาลในต่างจังหวัดส่วนใหญ่ยังไม่มีเซ็นเซอร์เรียลไทม์ คำว่า <em>"ไม่มีรายงาน"</em> ในพื้นที่ดังกล่าว จึงไม่ได้หมายความว่าไม่มีน้ำท่วมเสมอไป ควรเพิ่มความระมัดระวังเมื่อขับเข้าซอยหรือถนนท้องถิ่น
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Leaflet Map Initialization
+    let leafletMap = null;
+    let mapMarkersGroup = null;
+    let routePolyline = null;
+
+    function initMap() {
+      // Default view center on Thailand
+      leafletMap = L.map('mapView').setView([13.7563, 100.5018], 6);
+
+      // Free Basemaps without API key watermarks
+      const darkTile = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+        maxZoom: 16
+      });
+
+      const osmTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      });
+
+      const hotTile = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, HOT style',
+        maxZoom: 19
+      });
+
+      const satelliteTile = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
+        maxZoom: 18
+      });
+
+      // Set default dark tile
+      darkTile.addTo(leafletMap);
+
+      // Add map layer switcher
+      L.control.layers({
+        "🌙 Dark Mode": darkTile,
+        "🗺️ OpenStreetMap": osmTile,
+        "🚒 OSM HOT": hotTile,
+        "🛰️ Satellite": satelliteTile
+      }, null, { position: 'topright' }).addTo(leafletMap);
+
+      mapMarkersGroup = L.layerGroup().addTo(leafletMap);
+    }
+
+    function renderMapMarkers() {
+      if (!leafletMap || !mapMarkersGroup) return;
+
+      mapMarkersGroup.clearLayers();
+
+      const allPts = [
+        ...floodData.bmaPoints.map(p => ({ ...p, _source: 'bma' })),
+        ...floodData.dohPoints.map(p => ({ ...p, _source: 'doh' }))
+      ];
+
+      allPts.forEach(pt => {
+        if (!pt.lat || !pt.lng) return;
+
+        let color = '#38bdf8'; // Blue for minor
+        if (pt.passable === false || pt.cm >= 30) {
+          color = '#ef4444'; // Red for danger/impassable
+        } else if (pt.cm >= 15) {
+          color = '#f59e0b'; // Yellow for caution
+        }
+
+        const markerHtml = `<div style="background-color:${color}; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 10px ${color};"></div>`;
+        const customIcon = L.divIcon({
+          html: markerHtml,
+          className: 'custom-flood-marker',
+          iconSize: [14, 14],
+          iconAnchor: [7, 7]
+        });
+
+        const isDoh = pt._source === 'doh';
+        const title = isDoh ? `ทล.${pt.road} ${pt.section}` : (pt.name || pt.road);
+        const loc = isDoh ? `${pt.province} - อ.${pt.amphoe} (${pt.km})` : `กทม. เขต${pt.district}`;
+
+        const popupContent = `
+          <div style="font-size:0.9rem; font-family:'Prompt',sans-serif;">
+            <strong style="color:var(--accent-blue);">${title}</strong>
+            <div style="font-size:0.8rem; color:#94a3b8; margin-top:2px;">${loc}</div>
+            <div style="margin-top:6px; font-weight:600; color:${color};">
+              🌊 ระดับน้ำ: ${pt.cm} ซม. (${pt.passable === false ? '🚫 ผ่านไม่ได้' : 'ผ่านได้'})
+            </div>
+            ${pt.reason ? `<div style="font-size:0.78rem; color:#cbd5e1; margin-top:4px;">เหตุ: ${pt.reason}</div>` : ''}
+            ${pt.bypass ? `<div style="font-size:0.78rem; color:#fde68a; margin-top:4px;">ทางเลี่ยง: ${pt.bypass}</div>` : ''}
+            <a href="https://www.google.com/maps/search/?api=1&query=${pt.lat},${pt.lng}" target="_blank" style="display:inline-block; margin-top:8px; color:#38bdf8; text-decoration:none; font-size:0.8rem;">
+              📍 เปิดดูใน Google Maps
+            </a>
+          </div>
+        `;
+
+        L.marker([pt.lat, pt.lng], { icon: customIcon })
+          .bindPopup(popupContent)
+          .addTo(mapMarkersGroup);
+      });
+    }
+
+    function drawRouteOnMap(coordinates) {
+      if (!leafletMap) return;
+
+      if (routePolyline) {
+        leafletMap.removeLayer(routePolyline);
+      }
+
+      if (coordinates && coordinates.length > 0) {
+        const latLngs = coordinates.map(c => [c[1], c[0]]);
+        routePolyline = L.polyline(latLngs, {
+          color: '#6366f1',
+          weight: 5,
+          opacity: 0.8,
+          dashArray: '8, 8'
+        }).addTo(leafletMap);
+
+        leafletMap.fitBounds(routePolyline.getBounds(), { padding: [40, 40] });
+      }
+    }
+
+    // System Data Store
+    let floodData = { bmaPoints: [], dohPoints: [], bmaUpdatedAt: null, dohUpdatedAt: null, fetchedAt: null };
+    let selectedVehicle = 'sedan';
+    let timerInterval = null;
+    let timerSeconds = 0;
+
+    const vehicleLimits = {
+      sedan: { comfortable: 10, slow: 20, name: 'รถเก๋ง / รถโหลด' },
+      suv: { comfortable: 20, slow: 35, name: 'SUV / กระบะ' },
+      bike: { comfortable: 5, slow: 15, name: 'มอเตอร์ไซค์' }
+    };
+
+    // DOM Elements
+    const bmaCountEl = document.getElementById('bmaCount');
+    const dohCountEl = document.getElementById('dohCount');
+    const bmaTimeEl = document.getElementById('bmaTime');
+    const dohTimeEl = document.getElementById('dohTime');
+    const bmaDotEl = document.getElementById('bmaDot');
+    const dohDotEl = document.getElementById('dohDot');
+    const refreshBtn = document.getElementById('refreshBtn');
+
+    const webAppUrlInput = document.getElementById('webAppUrlInput');
+    const syncDriveBtn = document.getElementById('syncDriveBtn');
+
+    const savedUrl = localStorage.getItem('flood_web_app_url');
+    if (savedUrl) {
+      webAppUrlInput.value = savedUrl;
+    }
+    webAppUrlInput.addEventListener('change', () => {
+      localStorage.setItem('flood_web_app_url', webAppUrlInput.value.trim());
+    });
+
+    const originInput = document.getElementById('originInput');
+    const destInput = document.getElementById('destInput');
+    const roadsInput = document.getElementById('roadsInput');
+    const gmapsBtn = document.getElementById('gmapsBtn');
+    const wazeBtn = document.getElementById('wazeBtn');
+    const aiRouteBtn = document.getElementById('aiRouteBtn');
+    const aiTimerBox = document.getElementById('aiTimerBox');
+    const timerText = document.getElementById('timerText');
+    const stopTimerBtn = document.getElementById('stopTimerBtn');
+
+    const routeResultCard = document.getElementById('routeResultCard');
+    const routeSummaryBox = document.getElementById('routeSummaryBox');
+    const segmentTimeline = document.getElementById('segmentTimeline');
+    const unlinkedSection = document.getElementById('unlinkedSection');
+    const unlinkedList = document.getElementById('unlinkedList');
+
+    const searchInput = document.getElementById('searchInput');
+    const sourceFilter = document.getElementById('sourceFilter');
+    const provinceFilter = document.getElementById('provinceFilter');
+    const pointsList = document.getElementById('pointsList');
+
+    if (localStorage.getItem('gasWebAppUrl')) {
+      webAppUrlInput.value = localStorage.getItem('gasWebAppUrl');
+    }
+    webAppUrlInput.addEventListener('change', () => {
+      localStorage.setItem('gasWebAppUrl', webAppUrlInput.value.trim());
+    });
+
+    document.querySelectorAll('.vehicle-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.vehicle-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        selectedVehicle = card.dataset.type;
+        updateMapLinks();
+      });
+    });
+
+    [originInput, destInput, roadsInput].forEach(el => {
+      el.addEventListener('input', updateMapLinks);
+    });
+
+    function updateMapLinks() {
+      const origin = encodeURIComponent(originInput.value.trim());
+      const dest = encodeURIComponent(destInput.value.trim());
+      gmapsBtn.href = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${origin}&destination=${dest}`;
+      wazeBtn.href = `https://waze.com/ul?navigate=yes&q=${dest}`;
+    }
+    updateMapLinks();
+
+    async function loadFloodData() {
+      refreshBtn.disabled = true;
+      refreshBtn.innerText = '⌛ กำลังดึงข้อมูลสด...';
+
+      let bmaPts = [], dohPts = [];
+      let bmaTime = new Date().toISOString(), dohTime = new Date().toISOString();
+
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const res = await fetch(`https://hdms.doh.go.th/internal-api/public/dashboard?start=${today}&end=${today}&searchText=&division=&district=&depot=&province=&amphoe=&tambon=&incidentType=&status=open&floodLevel=&passage=all`);
+        if (res.ok) {
+          let data = await res.json();
+          if (!Array.isArray(data) && typeof data === 'object') data = Object.values(data);
+          dohPts = data.filter(item => item.incident_type_id === 1).map(item => ({
+            id: String(item.gid || ''),
+            road: String(item.road_code || '').replace(/^0+/, ''),
+            section: item.section_name || '',
+            km: `${item.km_start || ''}–${item.km_end || ''}`.replace(/^–|–$/, ''),
+            province: item.province || '',
+            amphoe: item.amphoe || '',
+            lat: parseFloat(item.latitude) || 0,
+            lng: parseFloat(item.longitude) || 0,
+            cm: parseFloat(item.flood_level) || 0,
+            passable: item.lane_closure === true,
+            reason: item.road_closure_text || item.cause_of_accident || 'น้ำท่วมขัง',
+            bypass: item.bypass_desc || '',
+            at: item.survey_date || item.start_date || new Date().toISOString()
+          }));
+        }
+      } catch (e) {}
+
+      try {
+        const res = await fetch(`https://floodbangkok.bangkok.go.th/bkk/dds/services/api/floods/v1/items/flood_notification?limit=3000&sort=-noti_created_at&fields=value,noti_created_at,sensor_profile.code,sensor_profile.name,sensor_profile.road,sensor_profile.district,sensor_profile.lat,sensor_profile.long`);
+        if (res.ok) {
+          const data = await res.json();
+          const items = data.data || [];
+          const bmaMap = {};
+          items.forEach(item => {
+            const val = parseFloat(item.value);
+            if (isNaN(val) || val <= 0) return;
+            const sp = item.sensor_profile || {};
+            const code = sp.code;
+            if (code && !bmaMap[code]) {
+              bmaMap[code] = {
+                id: code,
+                name: sp.name || '',
+                road: sp.road || '',
+                district: sp.district || '',
+                lat: parseFloat(sp.lat) || 0,
+                lng: parseFloat(sp.long) || 0,
+                cm: val,
+                at: item.noti_created_at
+              };
+            }
+          });
+          bmaPts = Object.values(bmaMap);
+        }
+      } catch (e) {}
+
+      if (bmaPts.length === 0 && dohPts.length === 0) {
+        try {
+          const localRes = await fetch('./flood_data_initial.json');
+          if (localRes.ok) {
+            const json = await localRes.json();
+            bmaPts = json.bma?.points || [];
+            dohPts = json.doh?.points || [];
+          }
+        } catch(err){}
+      }
+
+      processJsonPayload({
+        version: 1,
+        fetchedAt: new Date().toISOString(),
+        bma: { updatedAt: bmaTime, points: bmaPts },
+        doh: { updatedAt: dohTime, points: dohPts }
+      });
+
+      refreshBtn.disabled = false;
+      refreshBtn.innerText = '🔄 ดึงข้อมูลสดจากเบราว์เซอร์';
+
+      if (webAppUrlInput.value.trim()) {
+        syncToDrive();
+      }
+    }
+
+    async function syncToDrive() {
+      const url = webAppUrlInput.value.trim();
+      if (!url) return;
+
+      syncDriveBtn.innerText = '⏳ กำลังซิงก์...';
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bmaPoints: floodData.bmaPoints,
+            dohPoints: floodData.dohPoints
+          })
+        });
+        syncDriveBtn.innerText = '✅ ซิงก์ลง Drive แล้ว';
+        setTimeout(() => syncDriveBtn.innerText = '💾 บันทึกลง Google Drive', 3000);
+      } catch (err) {
+        syncDriveBtn.innerText = '❌ ซิงก์ไม่ผ่าน';
+        setTimeout(() => syncDriveBtn.innerText = '💾 บันทึกลง Google Drive', 3000);
+      }
+    }
+
+    syncDriveBtn.addEventListener('click', syncToDrive);
+
+    function processJsonPayload(json) {
+      floodData.bmaPoints = json.bma?.points || [];
+      floodData.dohPoints = json.doh?.points || [];
+      floodData.bmaUpdatedAt = json.bma?.updatedAt || json.fetchedAt;
+      floodData.dohUpdatedAt = json.doh?.updatedAt || json.fetchedAt;
+      floodData.fetchedAt = json.fetchedAt;
+
+      updateFreshnessBar();
+      populateProvinceFilter();
+      renderPointsCatalog();
+      renderMapMarkers();
+    }
+
+    function updateFreshnessBar() {
+      bmaCountEl.innerText = floodData.bmaPoints.length;
+      dohCountEl.innerText = floodData.dohPoints.length;
+
+      const now = new Date();
+
+      if (floodData.bmaUpdatedAt) {
+        const bmaDate = new Date(floodData.bmaUpdatedAt);
+        const hoursAgo = Math.round((now - bmaDate) / (1000 * 60 * 60));
+        bmaTimeEl.innerText = `(${hoursAgo} ชม. ที่แล้ว)`;
+        bmaDotEl.className = hoursAgo > 4 ? 'status-dot warning' : 'status-dot';
+      }
+
+      if (floodData.dohUpdatedAt) {
+        const dohDate = new Date(floodData.dohUpdatedAt);
+        const hoursAgo = Math.round((now - dohDate) / (1000 * 60 * 60));
+        dohTimeEl.innerText = `(${hoursAgo} ชม. ที่แล้ว)`;
+        dohDotEl.className = hoursAgo > 4 ? 'status-dot warning' : 'status-dot';
+      }
+    }
+
+    function populateProvinceFilter() {
+      const provinces = new Set();
+      floodData.dohPoints.forEach(p => { if (p.province) provinces.add(p.province); });
+      floodData.bmaPoints.forEach(p => { if (p.district) provinces.add('กรุงเทพฯ - ' + p.district); });
+
+      const sorted = Array.from(provinces).sort();
+      provinceFilter.innerHTML = '<option value="all">ทุกจังหวัด / เขตทั่วไทย</option>';
+      sorted.forEach(prov => {
+        const opt = document.createElement('option');
+        opt.value = prov;
+        opt.innerText = prov;
+        provinceFilter.appendChild(opt);
+      });
+    }
+
+    function renderPointsCatalog() {
+      const search = searchInput.value.trim().toLowerCase();
+      const source = sourceFilter.value;
+      const prov = provinceFilter.value;
+
+      pointsList.innerHTML = '';
+
+      let allPts = [];
+      if (source === 'all' || source === 'bma') {
+        floodData.bmaPoints.forEach(p => allPts.push({ ...p, _source: 'bma' }));
+      }
+      if (source === 'all' || source === 'doh' || source === 'impassable') {
+        floodData.dohPoints.forEach(p => allPts.push({ ...p, _source: 'doh' }));
+      }
+
+      const filtered = allPts.filter(pt => {
+        if (source === 'impassable' && !(pt.passable === false || pt.cm >= 30)) return false;
+
+        if (prov !== 'all') {
+          if (prov.startsWith('กรุงเทพฯ') && pt._source === 'bma') {
+            const dist = prov.replace('กรุงเทพฯ - ', '');
+            if (pt.district !== dist) return false;
+          } else if (pt.province !== prov && !prov.includes(pt.province)) {
+            return false;
+          }
+        }
+
+        if (search) {
+          const text = `${pt.name || ''} ${pt.road || ''} ${pt.district || ''} ${pt.province || ''} ${pt.section || ''}`.toLowerCase();
+          if (!text.includes(search)) return false;
+        }
+
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        pointsList.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-secondary);">ไม่พบข้อมูลจุดน้ำท่วมตามเงื่อนไขที่กรอง</div>';
+        return;
+      }
+
+      filtered.forEach(pt => {
+        const card = document.createElement('div');
+        card.className = 'point-card';
+
+        const isDoh = pt._source === 'doh';
+        const title = isDoh ? `ทล.${pt.road} ${pt.section}` : (pt.name || pt.road);
+        const loc = isDoh ? `${pt.province} - อ.${pt.amphoe} (${pt.km})` : `กทม. เขต${pt.district}`;
+        const cm = pt.cm || 0;
+        const fillPct = Math.min(100, Math.round((cm / 60) * 100));
+
+        let badgeHtml = '';
+        if (isDoh && pt.passable === false) {
+          badgeHtml = '<span class="segment-badge badge-danger">🚫 ผ่านไม่ได้</span>';
+        } else if (cm >= 30) {
+          badgeHtml = '<span class="segment-badge badge-danger">⚠️ น้ำท่วมสูง</span>';
+        } else if (cm >= 15) {
+          badgeHtml = '<span class="segment-badge badge-caution">⚠️ เฝ้าระวัง</span>';
+        } else {
+          badgeHtml = '<span class="segment-badge badge-safe">💧 น้ำขังเล็กน้อย</span>';
+        }
+
+        card.innerHTML = `
+          <div>
+            <div class="point-card-header">
+              <span class="point-name">${title}</span>
+              <span class="point-source ${isDoh ? 'source-doh' : 'source-bma'}">${isDoh ? 'DOH ทางหลวง' : 'BMA เซ็นเซอร์'}</span>
+            </div>
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">${loc}</div>
+            
+            <div class="depth-bar-container">
+              <div class="depth-bar-label">
+                <span>ระดับน้ำ: <strong>${cm} ซม.</strong></span>
+                ${badgeHtml}
+              </div>
+              <div class="depth-bar-bg">
+                <div class="depth-bar-fill" style="width: ${fillPct}%;"></div>
+              </div>
+            </div>
+            ${pt.reason ? `<div style="font-size:0.78rem; color:var(--text-secondary); margin-top:4px;">💬 สาเหตุ: ${pt.reason}</div>` : ''}
+            ${pt.bypass ? `<div style="font-size:0.78rem; color:var(--accent-warning); margin-top:2px;">🛣️ ทางเลี่ยง: ${pt.bypass}</div>` : ''}
+          </div>
+          
+          <div class="point-footer">
+            <span>🕒 อัปเดต: ${pt.at ? pt.at.substring(0,16).replace('T',' ') : '-'}</span>
+            <a href="https://www.google.com/maps/search/?api=1&query=${pt.lat},${pt.lng}" target="_blank" class="map-link">
+              📍 แผนที่
+            </a>
+          </div>
+        `;
+
+        pointsList.appendChild(card);
+      });
+    }
+
+    [searchInput, sourceFilter, provinceFilter].forEach(el => {
+      el.addEventListener('input', renderPointsCatalog);
+    });
+
+    refreshBtn.addEventListener('click', loadFloodData);
+
+    // Universal Thailand Geocoding (Nominatim API)
+    async function geocodeLocation(name) {
+      const q = name.includes('ไทย') ? name : `${name}, Thailand`;
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0) {
+            return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+          }
+        }
+      } catch(e) {}
+      return null;
+    }
+
+    function calcDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // OSRM Map Engine Execution
+    aiRouteBtn.addEventListener('click', async () => {
+      aiTimerBox.style.display = 'flex';
+      timerSeconds = 0;
+      timerText.innerText = `กำลังคำนวณพิกัดเริ่มต้นและปลายทางทั่วไทย...`;
+
+      timerInterval = setInterval(() => {
+        timerSeconds += 0.1;
+        timerText.innerText = `กำลังประมวลผลเส้นทาง OSRM และวาด Visualized Map (${timerSeconds.toFixed(1)} วินาที)`;
+      }, 100);
+
+      const origin = originInput.value.trim();
+      const dest = destInput.value.trim();
+
+      const origCoords = await geocodeLocation(origin);
+      const destCoords = await geocodeLocation(dest);
+
+      let osrmSteps = [];
+      let routeGeometry = [];
+
+      if (origCoords && destCoords) {
+        try {
+          const osrmRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${origCoords.lng},${origCoords.lat};${destCoords.lng},${destCoords.lat}?steps=true&geometries=geojson&overview=full`);
+          if (osrmRes.ok) {
+            const data = await osrmRes.json();
+            if (data.routes && data.routes.length > 0) {
+              const legs = data.routes[0].legs || [];
+              osrmSteps = legs[0]?.steps || [];
+              routeGeometry = data.routes[0].geometry?.coordinates || [];
+            }
+          }
+        } catch(e) {}
+      }
+
+      if (timerInterval) clearInterval(timerInterval);
+      aiTimerBox.style.display = 'none';
+
+      drawRouteOnMap(routeGeometry);
+      runRouteEvaluationWithOsrm(osrmSteps, origin, dest);
+    });
+
+    stopTimerBtn.addEventListener('click', () => {
+      if (timerInterval) clearInterval(timerInterval);
+      aiTimerBox.style.display = 'none';
+    });
+
+    function runRouteEvaluationWithOsrm(osrmSteps, origin, dest) {
+      const rawRoads = roadsInput.value.trim();
+      const userSpecifiedRoads = rawRoads.split(/[,|\s]+/).map(r => r.replace(/^ถ\.|ถนน|ทางหลวง/g, '').trim()).filter(Boolean);
+
+      let segments = [];
+
+      if (osrmSteps.length > 0) {
+        let currentSegRoads = [];
+        let currentDistKm = 0;
+        let segCount = 1;
+        let lastCoords = null;
+
+        osrmSteps.forEach((st, idx) => {
+          const name = st.name || st.ref || 'ถนนสายหลัก';
+          const distKm = (st.distance || 0) / 1000;
+          currentDistKm += distKm;
+
+          if (!currentSegRoads.includes(name)) {
+            currentSegRoads.push(name);
+          }
+
+          if (st.maneuver && st.maneuver.location) {
+            lastCoords = { lat: st.maneuver.location[1], lng: st.maneuver.location[0] };
+          }
+
+          if (currentDistKm >= 25 || idx === osrmSteps.length - 1) {
+            const primaryRoad = currentSegRoads.find(r => r !== 'ทางท้องถิ่น' && r !== 'ถนนท้องถิ่น') || currentSegRoads[0] || 'ถนนสายหลัก';
+            const hwyMatch = primaryRoad.match(/\d+/);
+            const roadNum = hwyMatch ? hwyMatch[0] : '';
+
+            segments.push({
+              hwy: primaryRoad,
+              title: `ช่วงที่ ${segCount}: ${currentSegRoads.slice(0, 3).join(' ➔ ')}`,
+              km: `ระยะประมาณ ${Math.round(currentDistKm)} กม.`,
+              province: segCount === 1 ? origin : (idx === osrmSteps.length - 1 ? dest : `${origin} ➔ ${dest}`),
+              roadName: roadNum || primaryRoad,
+              coords: lastCoords
+            });
+
+            currentSegRoads = [];
+            currentDistKm = 0;
+            segCount++;
+          }
+        });
+      }
+
+      if (segments.length === 0) {
+        segments = [
+          { hwy: 'ทางหลวงท้องถิ่น', title: `ช่วงที่ 1: ซอย/ถนนเริ่มต้น จาก ${origin}`, km: 'กม. 0 - 20', province: origin, roadName: origin },
+          { hwy: 'ทางหลวงหลักสายประธาน', title: `ช่วงที่ 2: ทางหลวงหลักเชื่อมต่อระหว่างจังหวัด (${origin} ➔ ${dest})`, km: 'กม. 20 - 70', province: `${origin} - ${dest}`, roadName: userSpecifiedRoads[0] || '1' },
+          { hwy: 'ทางหลวงปลายทาง', title: `ช่วงสุดท้าย: ถนนทางเข้าสู่ปลายทาง ${dest}`, km: 'กม. 70 - 100', province: dest, roadName: dest }
+        ];
+      }
+
+      const boundPtIds = new Set();
+      segmentTimeline.innerHTML = '';
+      let overallMaxWater = 0;
+      let hasImpassable = false;
+
+      segments.forEach((seg) => {
+        const matchedDoh = floodData.dohPoints.filter(p => {
+          if (seg.roadName && (p.road === seg.roadName || p.road.includes(seg.roadName))) return true;
+          if (p.province && (seg.province.includes(p.province) || origin.includes(p.province) || dest.includes(p.province))) return true;
+          if (seg.coords && p.lat && p.lng) {
+            const dist = calcDistance(seg.coords.lat, seg.coords.lng, p.lat, p.lng);
+            if (dist < 20) return true;
+          }
+          return false;
+        });
+
+        const matchedBma = floodData.bmaPoints.filter(p => {
+          if (seg.roadName && (p.road.includes(seg.roadName) || p.name.includes(seg.roadName))) return true;
+          if ((origin.includes('กรุงเทพ') || seg.province.includes('กรุงเทพ')) && p.district && (origin.includes(p.district) || seg.title.includes(p.district))) return true;
+          return false;
+        });
+
+        const matchedAll = [...matchedDoh.map(p => ({ ...p, _source: 'doh' })), ...matchedBma.map(p => ({ ...p, _source: 'bma' }))];
+        matchedAll.forEach(p => boundPtIds.add(p.id));
+
+        let segMaxWater = 0;
+        let segImpassable = false;
+        matchedAll.forEach(p => {
+          if (p.cm > segMaxWater) segMaxWater = p.cm;
+          if (p.passable === false || p.cm >= 35) segImpassable = true;
+        });
+
+        if (segMaxWater > overallMaxWater) overallMaxWater = segMaxWater;
+        if (segImpassable) hasImpassable = true;
+
+        const vConfig = vehicleLimits[selectedVehicle];
+        let statusClass = 'badge-safe';
+        let statusText = '🟢 สภาพถนนปกติ ผ่านได้ปลอดภัย';
+        let cardBorderClass = '';
+
+        if (segImpassable || segMaxWater > vConfig.slow) {
+          statusClass = 'badge-danger';
+          statusText = `🔴 ลุยไม่ได้สำหรับ${vConfig.name} (น้ำสูง ${segMaxWater} ซม.)`;
+          cardBorderClass = 'danger';
+        } else if (segMaxWater > vConfig.comfortable) {
+          statusClass = 'badge-caution';
+          statusText = `🟡 ควรชะลอความเร็วมาก (น้ำสูง ${segMaxWater} ซม.)`;
+          cardBorderClass = 'caution';
+        }
+
+        const card = document.createElement('div');
+        card.className = `segment-card ${cardBorderClass}`;
+
+        let pointsHtml = '';
+        if (matchedAll.length > 0) {
+          pointsHtml = matchedAll.map(p => `
+            <div class="flood-point-box">
+              <div style="font-weight:600; color:#fca5a5; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                <span>⚠️ [Key: ${p.id}] ${p.name || ('ทล.' + p.road + ' ' + p.section)}</span>
+                <span>ระดับน้ำ: ${p.cm} ซม.</span>
+              </div>
+              <div style="margin-top:4px; color:var(--text-secondary);">
+                📍 ตำแหน่ง: ${p.province || p.district || ''} ${p.amphoe ? 'อ.' + p.amphoe : ''} (${p.km || ''}) ${p.reason ? '| เหตุ: ' + p.reason : ''}
+              </div>
+              ${p.bypass ? `<div style="color:var(--accent-warning); margin-top:4px;">🛣️ ทางเลี่ยงของกรมทางหลวง: ${p.bypass}</div>` : ''}
+              <div style="margin-top:6px; display:flex; gap:10px;">
+                <a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" class="map-link">
+                  📍 เปิดพิกัดจุดท่วมใน Google Maps
+                </a>
+                ${p.bypass ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank" class="map-link" style="color:var(--accent-warning);">🧭 เปิดทางเลี่ยง</a>` : ''}
+              </div>
+            </div>
+          `).join('');
+        }
+
+        card.innerHTML = `
+          <div class="segment-header">
+            <div>
+              <span class="segment-hwy">${seg.hwy}</span>
+              <span class="segment-title">${seg.title}</span>
+            </div>
+            <span class="segment-badge ${statusClass}">${statusText}</span>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:10px; display:flex; gap:12px; flex-wrap:wrap;">
+            <span>📍 ระยะทาง: ${seg.km}</span>
+            <span>🏛️ พื้นที่: ${seg.province}</span>
+            <span>🌊 จุดน้ำขังที่ผูกกับช่วงนี้: ${matchedAll.length} จุด</span>
+          </div>
+          ${pointsHtml}
+        `;
+
+        segmentTimeline.appendChild(card);
+      });
+
+      const vConfig = vehicleLimits[selectedVehicle];
+      let summaryBg = 'rgba(34, 197, 94, 0.15)';
+      let summaryBorder = 'var(--accent-green)';
+      let summaryText = `✅ <strong>เส้นทางขับขี่จริง ${origin} ➔ ${dest} สามารถเดินทางได้สำหรับ ${vConfig.name}</strong> (ระดับน้ำสูงสุดที่พบ ${overallMaxWater} ซม.)`;
+
+      if (hasImpassable || overallMaxWater > vConfig.slow) {
+        summaryBg = 'rgba(239, 68, 68, 0.15)';
+        summaryBorder = 'var(--accent-danger)';
+        summaryText = `🚨 <strong>พบช่วงน้ำท่วมสูงเกินเกณฑ์ขีดจำกัดของ ${vConfig.name}!</strong> แนะนำให้เลี่ยงใช้เส้นทางอื่น หรือเปลี่ยนไปใช้ทางด่วน / มอเตอร์เวย์ / รถไฟ`;
+      } else if (overallMaxWater > vConfig.comfortable) {
+        summaryBg = 'rgba(245, 158, 11, 0.15)';
+        summaryBorder = 'var(--accent-warning)';
+        summaryText = `⚠️ <strong>ควรขับขี่ด้วยความระมัดระวังเป็นพิเศษสำหรับ ${vConfig.name}</strong> พบน้ำขังบางช่วงสูง ${overallMaxWater} ซม.`;
+      }
+
+      routeSummaryBox.style.background = summaryBg;
+      routeSummaryBox.style.borderColor = summaryBorder;
+      routeSummaryBox.innerHTML = summaryText;
+
+      const allRoadNames = segments.map(s => s.roadName).filter(Boolean);
+      const unlinkedDoh = floodData.dohPoints.filter(p => {
+        if (boundPtIds.has(p.id)) return false;
+        return (origin.includes(p.province) || dest.includes(p.province) || allRoadNames.some(rd => p.road === rd || p.road.includes(rd)));
+      });
+
+      if (unlinkedDoh.length > 0) {
+        unlinkedSection.classList.remove('hidden');
+        unlinkedList.innerHTML = unlinkedDoh.map(p => `
+          <div style="margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.05);">
+            • <strong>ทางหลวง ${p.road} (${p.province})</strong> ช่วง ${p.section} (${p.km}) - น้ำท่วมสูง ${p.cm} ซม. (${p.passable ? 'ผ่านได้' : 'ผ่านไม่ได้'})
+            <a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" class="map-link" style="margin-left:8px;">[แผนที่]</a>
+          </div>
+        `).join('');
+      } else {
+        unlinkedSection.classList.add('hidden');
+      }
+
+      routeResultCard.classList.remove('hidden');
+      routeResultCard.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      loadFloodData();
+    });
+  </script>
+</body>
+</html>
